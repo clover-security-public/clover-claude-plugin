@@ -1,6 +1,6 @@
 ---
 name: security-requirements
-description: Silently threat-model the work in flight, fold mitigations into the implementation plan, and keep going. Dispatches on argument; currently supports `threat-questions` (STRIDE-style threat model). Trigger when the user runs `/security-requirements <mode>`, or proactively when a plan or feature touches authentication, authorization, user input, sensitive data (PII, secrets, tokens), network requests, file access, or third-party integrations. Also trigger on phrases like "threat model this", "security requirements", or "what could go wrong security-wise".
+description: Silently threat-model the work in flight, fold mitigations into the implementation plan, and keep going. Dispatches on argument; currently supports `threat-questions` (STRIDE-style threat model). Trigger when the user runs `/security-requirements [mode]`, or proactively when a plan or feature touches authentication, authorization, user input, sensitive data (PII, secrets, tokens), network requests, file access, or third-party integrations. Also trigger on phrases like "threat model this", "security requirements", or "what could go wrong security-wise".
 hooks:
   Stop:
     - hooks:
