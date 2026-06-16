@@ -21,16 +21,6 @@
           }
         ]
       }
-    ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/run-hook.sh log-prompt"
-          }
-        ]
-      }
     ]
   }
 }

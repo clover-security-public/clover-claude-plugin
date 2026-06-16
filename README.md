@@ -53,3 +53,8 @@ export CAS_CLOVER_PLUGIN_CLIENT_SECRET=your-client-secret
 ## Logs
 
 Debug logs at `/tmp/clover-hook.log`
+
+## Privacy
+This project is subject to the privacy practices described in our Privacy Policy:
+🔒 [Privacy Policy](https://clover.security/privacy-policy)
+
