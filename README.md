@@ -56,5 +56,5 @@ Debug logs at `/tmp/clover-hook.log`
 
 ## Privacy
 This project is subject to the privacy practices described in our Privacy Policy:
-🔒 https://clover.security/privacy-policy
+🔒 [Privacy Policy](https://clover.security/privacy-policy)
 
