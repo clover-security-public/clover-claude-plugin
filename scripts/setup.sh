@@ -193,9 +193,39 @@ PYEOF
 fi
 # ---------------------------------------------------------------------------
 
+# ===========================================================================
+# Binary management — deploy and auto-update the clover-hook binary.
+#
+# The binary carries Clover's plan-review logic, so keeping it current is the
+# whole point of auto-update. The plugin clone (CLAUDE_PLUGIN_ROOT) only
+# refreshes when the user updates the plugin — which may never happen — so we
+# additionally poll GitHub Releases for a newer binary and pull it into
+# CLAUDE_PLUGIN_DATA, which persists across plugin updates.
+#
+# Design constraints, in priority order:
+#   1. Offline-first — a missing network must never break the plugin. The
+#      bundled binary that ships in the clone is always the fallback.
+#   2. No per-hook network — the update check is TTL-gated, and the
+#      latency-sensitive hook path (run-hook.sh) calls us with --no-update,
+#      so only SessionStart ever reaches out to the network.
+#   3. Never downgrade — we deploy max(clone version, latest released).
+#
+# Releases live in the per-plugin tag namespace "clover-v<version>"
+# (see .github/workflows/release.yml). The legacy "v<version>" tags are
+# tried as a fallback so older releases still resolve.
+# ===========================================================================
+UPDATE_TTL_SECONDS=21600   # 6h — how often SessionStart re-checks for a release
+
+# --no-update: ensure a working binary is present without any network calls.
+# Used by run-hook.sh on the hot hook path. SessionStart omits it.
+CHECK_UPDATES=true
+[ "${1:-}" = "--no-update" ] && CHECK_UPDATES=false
+
 BINARY_DIR="${CLAUDE_PLUGIN_DATA:-${CLAUDE_PLUGIN_ROOT}}/bin"
 BINARY="$BINARY_DIR/clover-hook"
 VERSION_FILE="$BINARY_DIR/.version"
+CHECK_FILE="$BINARY_DIR/.last_update_check"
+mkdir -p "$BINARY_DIR"
 
 # Detect platform
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
@@ -206,49 +236,121 @@ case "$ARCH" in
 esac
 ASSET_NAME="clover-hook-${OS}-${ARCH}"
 
-# Get current plugin version
-PLUGIN_VERSION=$(grep -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json" 2>/dev/null | grep -o '[0-9][0-9.]*')
+# Version shipped in the current clone — the floor we never go below.
+CLONE_VERSION=$(grep -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json" 2>/dev/null | grep -o '[0-9][0-9.]*')
+DEPLOYED_VERSION=$(cat "$VERSION_FILE" 2>/dev/null || echo "")
 
-# Skip if binary exists and version matches
-if [ -x "$BINARY" ] && [ -f "$VERSION_FILE" ] && [ "$(cat "$VERSION_FILE")" = "$PLUGIN_VERSION" ]; then
-  exit 0
-fi
+# Echo the higher of two dotted-numeric versions ("" counts as lowest).
+# Pure bash so it works on macOS's bash 3.2 (no `sort -V` dependency).
+higher_version() {
+  [ -z "$1" ] && { echo "$2"; return; }
+  [ -z "$2" ] && { echo "$1"; return; }
+  [ "$1" = "$2" ] && { echo "$1"; return; }
+  local i n; local -a a b
+  IFS=. read -ra a <<< "$1"
+  IFS=. read -ra b <<< "$2"
+  n=${#a[@]}; [ ${#b[@]} -gt "$n" ] && n=${#b[@]}
+  for (( i = 0; i < n; i++ )); do
+    local x=${a[i]:-0} y=${b[i]:-0}
+    if [ "$x" -gt "$y" ] 2>/dev/null; then echo "$1"; return; fi
+    if [ "$x" -lt "$y" ] 2>/dev/null; then echo "$2"; return; fi
+  done
+  echo "$1"
+}
 
-mkdir -p "$BINARY_DIR"
+# Newest released clover version (highest clover-v* tag). Echoes nothing on
+# failure (offline / no gh / no curl) so callers fall back to the clone.
+latest_released_version() {
+  local tags result="" v
+  if command -v gh >/dev/null 2>&1; then
+    tags=$(gh release list --repo "$REPO" --limit 50 --json tagName --jq '.[].tagName' 2>/dev/null \
+           | sed -n 's/^clover-v\([0-9.][0-9.]*\)$/\1/p')
+  else
+    tags=$(curl -fsSL "https://api.github.com/repos/$REPO/releases?per_page=50" 2>/dev/null \
+           | grep -o '"tag_name"[[:space:]]*:[[:space:]]*"clover-v[0-9.]*"' \
+           | sed -E 's/.*clover-v([0-9.]+).*/\1/')
+  fi
+  for v in $tags; do result=$(higher_version "$result" "$v"); done
+  echo "$result"
+}
 
-# Primary path: copy the bundled binary that ships with the plugin clone.
-# This is the only reliable path — it works without gh CLI auth, without
-# a working network, and across all org rollout configurations.
-BUNDLED="${CLAUDE_PLUGIN_ROOT}/bin/${ASSET_NAME}"
-if [ -f "$BUNDLED" ]; then
-  cp "$BUNDLED" "$BINARY"
-  chmod +x "$BINARY"
-  echo "$PLUGIN_VERSION" > "$VERSION_FILE"
-  exit 0
-fi
+# Download the binary for $1 into $BINARY. Tries the per-plugin tag first,
+# then the legacy tag, via gh then curl. Returns 0 on success.
+download_binary() {
+  local version="$1" tag
+  for tag in "clover-v${version}" "v${version}"; do
+    if command -v gh >/dev/null 2>&1; then
+      if gh release download "$tag" --repo "$REPO" --pattern "$ASSET_NAME" \
+           --dir "$BINARY_DIR" --clobber >/dev/null 2>&1 \
+         && [ -f "$BINARY_DIR/$ASSET_NAME" ]; then
+        mv "$BINARY_DIR/$ASSET_NAME" "$BINARY"; chmod +x "$BINARY"; return 0
+      fi
+    fi
+    if curl -fsSL "https://github.com/$REPO/releases/download/${tag}/${ASSET_NAME}" \
+         -o "$BINARY.tmp" 2>/dev/null && [ -s "$BINARY.tmp" ]; then
+      mv "$BINARY.tmp" "$BINARY"; chmod +x "$BINARY"; return 0
+    fi
+    rm -f "$BINARY.tmp"
+  done
+  return 1
+}
 
-# Fallback: GitHub Releases (kept for shallow clones or future detached-bin layouts)
-if command -v gh >/dev/null 2>&1; then
-  gh release download "v${PLUGIN_VERSION}" \
-    --repo "$REPO" \
-    --pattern "$ASSET_NAME" \
-    --dir "$BINARY_DIR" \
-    --clobber 2>/dev/null
-  if [ -f "$BINARY_DIR/$ASSET_NAME" ]; then
-    mv "$BINARY_DIR/$ASSET_NAME" "$BINARY"
-    chmod +x "$BINARY"
-    echo "$PLUGIN_VERSION" > "$VERSION_FILE"
+# Copy the bundled binary that ships with the clone. Works offline and
+# without gh auth — the always-available fallback. Returns 0 on success.
+deploy_bundled() {
+  local bundled="${CLAUDE_PLUGIN_ROOT}/bin/${ASSET_NAME}"
+  if [ -f "$bundled" ]; then
+    cp "$bundled" "$BINARY"; chmod +x "$BINARY"; return 0
+  fi
+  return 1
+}
+
+# ---- Decide the target version --------------------------------------------
+TARGET_VERSION="$CLONE_VERSION"
+
+if [ "$CHECK_UPDATES" = true ]; then
+  # TTL gate: skip the network when the binary is present, not behind the
+  # clone, and we checked recently. Anything stale forces a check.
+  WITHIN_TTL=false
+  if [ -f "$CHECK_FILE" ]; then
+    LAST=$(cat "$CHECK_FILE" 2>/dev/null || echo 0)
+    [ $(( $(date +%s) - LAST )) -lt "$UPDATE_TTL_SECONDS" ] && WITHIN_TTL=true
+  fi
+
+  if [ -x "$BINARY" ] && [ "$WITHIN_TTL" = true ] \
+     && [ "$(higher_version "$DEPLOYED_VERSION" "$CLONE_VERSION")" = "$DEPLOYED_VERSION" ]; then
     exit 0
   fi
+
+  TARGET_VERSION=$(higher_version "$CLONE_VERSION" "$(latest_released_version)")
+  date +%s > "$CHECK_FILE"   # record the attempt so we don't re-poll until TTL
 fi
 
-URL="https://github.com/$REPO/releases/download/v${PLUGIN_VERSION}/${ASSET_NAME}"
-curl -sL "$URL" -o "$BINARY" 2>/dev/null
-if [ -s "$BINARY" ]; then
-  chmod +x "$BINARY"
-  echo "$PLUGIN_VERSION" > "$VERSION_FILE"
+# Already at or above the target → nothing to do (and never downgrade).
+if [ -x "$BINARY" ] && [ -n "$DEPLOYED_VERSION" ] \
+   && [ "$(higher_version "$DEPLOYED_VERSION" "$TARGET_VERSION")" = "$DEPLOYED_VERSION" ]; then
   exit 0
 fi
 
-echo "clover-plugin setup.sh: failed to install binary for ${OS}/${ARCH} (looked at ${BUNDLED}, gh release, curl)" >&2
+# ---- Deploy the target version --------------------------------------------
+# Prefer the bundled binary when the target matches the clone (fast, offline,
+# no auth). Otherwise download the newer release; fall back to bundled.
+if [ "$TARGET_VERSION" = "$CLONE_VERSION" ] && deploy_bundled; then
+  echo "$TARGET_VERSION" > "$VERSION_FILE"
+  exit 0
+fi
+
+if download_binary "$TARGET_VERSION"; then
+  echo "$TARGET_VERSION" > "$VERSION_FILE"
+  echo "clover-plugin setup.sh: updated binary to ${TARGET_VERSION}" >&2
+  exit 0
+fi
+
+# Last resort: whatever ships in the clone keeps the plugin working.
+if deploy_bundled; then
+  echo "$CLONE_VERSION" > "$VERSION_FILE"
+  exit 0
+fi
+
+echo "clover-plugin setup.sh: failed to install binary for ${OS}/${ARCH} (looked at bundled, gh release, curl)" >&2
 exit 1

@@ -26,6 +26,35 @@ You'll be prompted for:
 - **client_id** — API client ID (from Clover Settings > API Tokens)
 - **client_secret** — API client secret
 
+## Staying up to date
+
+Clover keeps itself current with two complementary mechanisms:
+
+- **The security engine (hook binary) auto-updates itself.** On each new
+  session Clover checks for a newer release and pulls it in the background
+  (at most once every 6 hours, with an offline fallback to the bundled
+  binary). You get fixes and improvements to the plan-review logic without
+  doing anything.
+- **Skills, hooks, and prompts update with the marketplace.** These ship in
+  the plugin itself, so they only refresh when the marketplace is pulled.
+  Enable marketplace auto-update once and Claude Code refreshes it on every
+  session start:
+
+  ```bash
+  claude plugin marketplace add \
+    --auto-update https://github.com/clover-security/clover-claude-plugin.git
+  ```
+
+  Or toggle it any time via `/plugin` → **Marketplaces** → *clover-security* →
+  **Auto-update**. (You can also set it directly in `~/.claude/settings.json`
+  under `extraKnownMarketplaces[].autoUpdate: true`.) After an update Claude
+  Code may prompt you to run `/reload-plugins` to apply it in the current
+  session.
+
+> Auto-update for third-party marketplaces is **off by default** — Claude Code
+> can't be forced into it from our side, so enabling it is a one-time step on
+> your machine. The hook binary's self-update above works regardless.
+
 ## What happens
 
 1. You create a plan in Claude Code

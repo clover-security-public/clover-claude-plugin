@@ -15,82 +15,103 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Get current version
-        id: current
-        run: |
-          VERSION=$(jq -r '.version' .claude-plugin/plugin.json)
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-
-      - name: Check if tag exists
-        id: check
-        run: |
-          VERSION="${{ steps.current.outputs.version }}"
-          if git tag -l "v$VERSION" | grep -q "v$VERSION"; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Determine bump type
-        id: bump
-        if: steps.check.outputs.exists == 'true'
-        run: |
-          echo "type=patch" >> "$GITHUB_OUTPUT"
-
-      - name: Bump version
-        id: next
-        if: steps.check.outputs.exists == 'true'
-        run: |
-          VERSION="${{ steps.current.outputs.version }}"
-          BUMP="${{ steps.bump.outputs.type }}"
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
-          case "$BUMP" in
-            major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
-            minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
-            patch) PATCH=$((PATCH + 1)) ;;
-          esac
-          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
-          echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
-          jq --arg v "$NEW_VERSION" '.version = $v' .claude-plugin/plugin.json > tmp.json
-          mv tmp.json .claude-plugin/plugin.json
-          jq --arg v "$NEW_VERSION" '.plugins[0].version = $v' .claude-plugin/marketplace.json > tmp.json
-          mv tmp.json .claude-plugin/marketplace.json
-
-      - name: Commit version bump
-        if: steps.check.outputs.exists == 'true'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add .claude-plugin/plugin.json .claude-plugin/marketplace.json
-          git commit -m "chore: bump version to ${{ steps.next.outputs.version }}"
-          git push
-
-      - name: Resolve final version
-        id: final
-        run: |
-          if [ "${{ steps.check.outputs.exists }}" = "true" ]; then
-            echo "version=${{ steps.next.outputs.version }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "version=${{ steps.current.outputs.version }}" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Verify binaries present
-        run: |
-          for name in clover-hook-darwin-arm64 clover-hook-darwin-amd64 clover-hook-linux-amd64 clover-hook-linux-arm64; do
-            if [ ! -f "bin/$name" ]; then
-              echo "ERROR: bin/$name is missing — push binaries from the source repo before releasing" >&2
-              exit 1
-            fi
-          done
-
-      - name: Create tag and release
-        run: |
-          VERSION="${{ steps.final.outputs.version }}"
-          git tag "v$VERSION"
-          git push origin "v$VERSION"
-          gh release create "v$VERSION" \
-            --title "v$VERSION" \
-            --generate-notes \
-            bin/clover-hook-*
+      # Per-plugin release. Driven entirely by the plugin list in
+      # marketplace.json, so adding a new plugin (e.g. the chat plugin)
+      # needs no workflow change — just a new entry under .plugins[].
+      #
+      # Each plugin is versioned independently and lives in its own tag
+      # namespace: "<plugin-name>-v<version>" (e.g. clover-v0.1.58,
+      # chat-v0.2.0). On every push to main we, for each plugin:
+      #   1. read its current version from marketplace.json
+      #   2. if "<name>-v<version>" already exists as a tag → patch-bump,
+      #      write the new version back into marketplace.json (and into the
+      #      plugin's own plugin.json when this repo holds it locally)
+      #   3. tag + cut a GitHub release for the resolved version
+      #
+      # Only plugins that actually ship the clover-hook binaries get those
+      # assets attached; others release without binaries.
+      - name: Bump, tag and release each plugin
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          MARKETPLACE=.claude-plugin/marketplace.json
+          ROOT_MANIFEST=.claude-plugin/plugin.json
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          PLUGIN_COUNT=$(jq '.plugins | length' "$MARKETPLACE")
+          # Each element: "<name>|<version>|<tag>"
+          RELEASES=()
+          COMMITTED=false
+
+          for i in $(seq 0 $((PLUGIN_COUNT - 1))); do
+            NAME=$(jq -r ".plugins[$i].name" "$MARKETPLACE")
+            VERSION=$(jq -r ".plugins[$i].version" "$MARKETPLACE")
+            TAG="${NAME}-v${VERSION}"
+
+            if git tag -l "$TAG" | grep -qx "$TAG"; then
+              # Current version already released → patch-bump.
+              IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+              PATCH=$((PATCH + 1))
+              VERSION="${MAJOR}.${MINOR}.${PATCH}"
+              TAG="${NAME}-v${VERSION}"
+
+              jq --argjson i "$i" --arg v "$VERSION" '.plugins[$i].version = $v' \
+                "$MARKETPLACE" > "$MARKETPLACE.tmp"
+              mv "$MARKETPLACE.tmp" "$MARKETPLACE"
+              git add "$MARKETPLACE"
+
+              # Keep the plugin's own manifest in sync when this repo is the
+              # one that holds it (root manifest's name matches the plugin).
+              if [ -f "$ROOT_MANIFEST" ] && [ "$(jq -r '.name' "$ROOT_MANIFEST")" = "$NAME" ]; then
+                jq --arg v "$VERSION" '.version = $v' "$ROOT_MANIFEST" > "$ROOT_MANIFEST.tmp"
+                mv "$ROOT_MANIFEST.tmp" "$ROOT_MANIFEST"
+                git add "$ROOT_MANIFEST"
+              fi
+
+              git commit -m "chore(${NAME}): bump version to ${VERSION}"
+              COMMITTED=true
+            fi
+
+            RELEASES+=("${NAME}|${VERSION}|${TAG}")
+          done
+
+          # Push all version-bump commits in one go (if any).
+          if [ "$COMMITTED" = true ]; then
+            git push
+          fi
+
+          # Tag + release each plugin at its resolved version.
+          for entry in "${RELEASES[@]}"; do
+            IFS='|' read -r NAME VERSION TAG <<< "$entry"
+
+            if git tag -l "$TAG" | grep -qx "$TAG"; then
+              echo "Tag $TAG already exists — nothing to release for $NAME."
+              continue
+            fi
+
+            # Attach the hook binaries only for the plugin that ships them.
+            ASSETS=()
+            if [ "$NAME" = "clover" ]; then
+              for b in clover-hook-darwin-arm64 clover-hook-darwin-amd64 \
+                       clover-hook-linux-amd64 clover-hook-linux-arm64; do
+                if [ ! -f "bin/$b" ]; then
+                  echo "ERROR: bin/$b is missing — push binaries from the source repo before releasing" >&2
+                  exit 1
+                fi
+                ASSETS+=("bin/$b")
+              done
+            fi
+
+            git tag "$TAG"
+            git push origin "$TAG"
+
+            if [ "${#ASSETS[@]}" -gt 0 ]; then
+              gh release create "$TAG" --title "$TAG" --generate-notes "${ASSETS[@]}"
+            else
+              gh release create "$TAG" --title "$TAG" --generate-notes
+            fi
+          done
