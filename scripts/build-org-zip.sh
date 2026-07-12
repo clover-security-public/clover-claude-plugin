@@ -44,7 +44,7 @@ for target in darwin-arm64 darwin-amd64 linux-arm64 linux-amd64; do
     SRC="bin/clover-hook-${target}"
     if [ ! -f "$SRC" ]; then
         echo "ERROR: ${SRC} is missing — pull binaries from the latest release first:" >&2
-        echo "  gh release download v${VERSION} --repo clover-security/clover-claude-plugin --dir bin/ --clobber --pattern 'clover-hook-*'" >&2
+        echo "  gh release download clover-v${VERSION} --repo clover-security/clover-claude-plugin --dir bin/ --clobber --pattern 'clover-hook-*'" >&2
         exit 1
     fi
     cp "$SRC" "$STAGE/bin/"
