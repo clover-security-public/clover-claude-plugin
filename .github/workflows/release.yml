@@ -3,6 +3,18 @@ name: Release
 on:
   push:
     branches: [main]
+    # Only cut a release when files that are actually part of the shipped
+    # plugin change. Pushes that touch only docs/CI (README, .github),
+    # .gitignore, or the manifests this workflow rewrites
+    # (.claude-plugin/**) no longer produce a new version. dist/ and the
+    # root clover-hook binary are gitignored, so they never reach a push.
+    paths:
+      - 'bin/**'        # clover-hook binaries (the release assets)
+      - 'hooks/**'      # hooks.json
+      - 'skills/**'     # bundled skills
+      - 'scripts/**'    # setup.sh / run-hook.sh / build-org-zip.sh
+  # Manual escape hatch: force a release even when nothing above changed.
+  workflow_dispatch:
 
 permissions:
   contents: write
