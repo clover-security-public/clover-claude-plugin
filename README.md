@@ -28,9 +28,9 @@ You'll be prompted for:
 
 ## Staying up to date
 
-Everything Clover runs — the security engine (hook binary), skills, hooks and
-prompts — ships inside the plugin, so it all updates together when the
-marketplace is pulled. Clover never downloads or updates anything at runtime:
+Everything Clover runs — the security engine (hook binary) and its hooks —
+ships inside the plugin, so it all updates together when the marketplace is
+pulled. Clover never downloads or updates anything at runtime:
 the binary you run is the one bundled in the version you installed.
 
 Enable marketplace auto-update once and Claude Code refreshes it on every
@@ -68,13 +68,6 @@ export CAS_CLOVER_PLUGIN_AUTH_URL=https://clover.frontegg.com
 export CAS_CLOVER_PLUGIN_CLIENT_ID=your-client-id
 export CAS_CLOVER_PLUGIN_CLIENT_SECRET=your-client-secret
 ```
-
-## Skills
-
-- **`/security-requirements <mode>`** — Claude silently threat-models the work in flight, prints a short `## Threats considered` block, and folds mitigations into the plan. **No questions asked.** Modes:
-  - `threat-questions` — STRIDE pass over the current plan/request when it touches auth, user input, sensitive data, network, or third-party APIs.
-
-  Also fires proactively when a plan touches a sensitive area.
 
 ## Logs
 
