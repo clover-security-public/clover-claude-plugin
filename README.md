@@ -11,7 +11,7 @@ When you exit plan mode in Claude Code, Clover intercepts the plan, sends it for
 **1. Add the Clover marketplace:**
 
 ```bash
-claude plugin marketplace add https://github.com/clover-security/clover-claude-plugin.git
+claude plugin marketplace add https://github.com/clover-security-public/clover-claude-plugin.git
 ```
 
 **2. Install the plugin:**
@@ -28,32 +28,29 @@ You'll be prompted for:
 
 ## Staying up to date
 
-Clover keeps itself current with two complementary mechanisms:
+Everything Clover runs — the security engine (hook binary), skills, hooks and
+prompts — ships inside the plugin, so it all updates together when the
+marketplace is pulled. Clover never downloads or updates anything at runtime:
+the binary you run is the one bundled in the version you installed.
 
-- **The security engine (hook binary) auto-updates itself.** On each new
-  session Clover checks for a newer release and pulls it in the background
-  (at most once every 6 hours, with an offline fallback to the bundled
-  binary). You get fixes and improvements to the plan-review logic without
-  doing anything.
-- **Skills, hooks, and prompts update with the marketplace.** These ship in
-  the plugin itself, so they only refresh when the marketplace is pulled.
-  Enable marketplace auto-update once and Claude Code refreshes it on every
-  session start:
+Enable marketplace auto-update once and Claude Code refreshes it on every
+session start:
 
-  ```bash
-  claude plugin marketplace add \
-    --auto-update https://github.com/clover-security/clover-claude-plugin.git
-  ```
+```bash
+claude plugin marketplace add \
+  --auto-update https://github.com/clover-security-public/clover-claude-plugin.git
+```
 
-  Or toggle it any time via `/plugin` → **Marketplaces** → *clover-security* →
-  **Auto-update**. (You can also set it directly in `~/.claude/settings.json`
-  under `extraKnownMarketplaces[].autoUpdate: true`.) After an update Claude
-  Code may prompt you to run `/reload-plugins` to apply it in the current
-  session.
+Or toggle it any time via `/plugin` → **Marketplaces** → *clover-security* →
+**Auto-update**. (You can also set it directly in `~/.claude/settings.json`
+under `extraKnownMarketplaces[].autoUpdate: true`.) After an update Claude
+Code may prompt you to run `/reload-plugins` to apply it in the current
+session.
 
 > Auto-update for third-party marketplaces is **off by default** — Claude Code
 > can't be forced into it from our side, so enabling it is a one-time step on
-> your machine. The hook binary's self-update above works regardless.
+> your machine. Without it, run `claude plugin marketplace update clover-security`
+> when you want the latest version.
 
 ## What happens
 
