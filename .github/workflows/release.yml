@@ -9,7 +9,7 @@ on:
     # (.claude-plugin/**) no longer produce a new version. dist/ and the
     # root clover-hook binary are gitignored, so they never reach a push.
     paths:
-      - 'binaries/**'   # clover-hook binaries (the release assets)
+      - 'runtime/**'   # clover-hook binaries (the release assets)
       - 'hooks/**'      # hooks.json
       - 'skills/**'     # bundled skills
       - 'scripts/**'    # setup.sh / run-hook.sh / build-org-zip.sh
@@ -110,11 +110,11 @@ jobs:
             if [ "$NAME" = "clover" ]; then
               for b in clover-hook-darwin-arm64 clover-hook-darwin-amd64 \
                        clover-hook-linux-amd64 clover-hook-linux-arm64; do
-                if [ ! -f "binaries/$b" ]; then
-                  echo "ERROR: binaries/$b is missing — push binaries from the source repo before releasing" >&2
+                if [ ! -f "runtime/$b" ]; then
+                  echo "ERROR: runtime/$b is missing — push binaries from the source repo before releasing" >&2
                   exit 1
                 fi
-                ASSETS+=("binaries/$b")
+                ASSETS+=("runtime/$b")
               done
             fi
 

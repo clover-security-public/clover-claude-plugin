@@ -3,7 +3,7 @@
 # Uses ${CLAUDE_PLUGIN_DATA} for persistent storage across plugin updates.
 #
 # This script makes no network calls. The binary it deploys always comes from
-# this clone's binaries/ directory, so the running artifact matches the
+# this clone's runtime/ directory, so the running artifact matches the
 # reviewed, pinned version of the plugin.
 
 # Persist plugin options to env.sh so other hook events
@@ -41,7 +41,7 @@ fi
 #
 # Contract:
 #   1. Offline only. Nothing here reaches the network. The binary is copied
-#      from ${CLAUDE_PLUGIN_ROOT}/binaries, which ships inside the plugin
+#      from ${CLAUDE_PLUGIN_ROOT}/runtime, which ships inside the plugin
 #      package, and that is its only possible source. A missing bundled asset
 #      is a hard error, never a remote fallback.
 #      The payload directory is deliberately NOT named bin/: Claude Code adds a
@@ -83,7 +83,7 @@ fi
 
 mkdir -p "$BINARY_DIR"
 
-BUNDLED="${CLAUDE_PLUGIN_ROOT}/binaries/${ASSET_NAME}"
+BUNDLED="${CLAUDE_PLUGIN_ROOT}/runtime/${ASSET_NAME}"
 if [ ! -f "$BUNDLED" ]; then
   echo "clover-plugin setup.sh: bundled binary not found for ${OS}/${ARCH} (expected ${BUNDLED})" >&2
   exit 1
