@@ -3,7 +3,7 @@
 #   - Plugin manifest (.claude-plugin/plugin.json + marketplace.json)
 #   - Hook config (hooks/hooks.json)
 #   - README.md
-#   - All four platform binaries (darwin/linux × arm64/amd64) under bin/
+#   - All four platform binaries (darwin/linux × arm64/amd64) under binaries/
 #   - A setup script that copies the right binary at SessionStart instead
 #     of fetching from GitHub Releases.
 #
@@ -22,7 +22,7 @@ echo "Building offline distribution for clover-plugin v${VERSION}"
 
 STAGE="dist/clover-plugin"
 rm -rf dist
-mkdir -p "$STAGE/.claude-plugin" "$STAGE/hooks" "$STAGE/scripts" "$STAGE/bin"
+mkdir -p "$STAGE/.claude-plugin" "$STAGE/hooks" "$STAGE/scripts" "$STAGE/binaries"
 
 # Copy the static plugin files.
 cp .claude-plugin/plugin.json "$STAGE/.claude-plugin/"
@@ -37,17 +37,17 @@ if [ -d skills ]; then
     cp -R skills "$STAGE/"
 fi
 
-# Bundle the four platform binaries from bin/. Source lives in a private
-# repo now; bin/ is treated as the canonical artifact location and is
-# kept in sync with the latest release.
+# Bundle the four platform binaries from binaries/. Source lives in a private
+# repo now; binaries/ is treated as the canonical artifact location and is
+# kept in sync with the latest release. (Deliberately not bin/ — see setup.sh.)
 for target in darwin-arm64 darwin-amd64 linux-arm64 linux-amd64; do
-    SRC="bin/clover-hook-${target}"
+    SRC="binaries/clover-hook-${target}"
     if [ ! -f "$SRC" ]; then
         echo "ERROR: ${SRC} is missing — pull binaries from the latest release first:" >&2
-        echo "  gh release download clover-v${VERSION} --repo clover-security/clover-claude-plugin --dir bin/ --clobber --pattern 'clover-hook-*'" >&2
+        echo "  gh release download clover-v${VERSION} --repo clover-security/clover-claude-plugin --dir binaries/ --clobber --pattern 'clover-hook-*'" >&2
         exit 1
     fi
-    cp "$SRC" "$STAGE/bin/"
+    cp "$SRC" "$STAGE/binaries/"
     echo "  bundled ${target}"
 done
 
@@ -93,7 +93,7 @@ fi
 
 mkdir -p "$BINARY_DIR"
 
-SRC="${CLAUDE_PLUGIN_ROOT}/bin/${ASSET_NAME}"
+SRC="${CLAUDE_PLUGIN_ROOT}/binaries/${ASSET_NAME}"
 if [ ! -f "$SRC" ]; then
   echo "clover-plugin: bundled binary not found for ${OS}/${ARCH} (expected ${SRC})" >&2
   exit 1

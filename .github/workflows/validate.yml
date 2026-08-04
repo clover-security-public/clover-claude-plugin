@@ -25,6 +25,26 @@ jobs:
           jq empty hooks/hooks.json
           echo "Valid"
 
+      # The claude.ai plugin store rejects any plugin that ships a top-level
+      # bin/ directory: Claude Code adds it to PATH on the CLI, but those
+      # executables are never shown on the admin approval surface. Clover's hook
+      # payload therefore lives in binaries/, which setup.sh deploys into
+      # CLAUDE_PLUGIN_DATA and the hooks exec from there. Guard both halves so a
+      # future change can't silently reintroduce bin/ or drop the payload.
+      - name: Reject a top-level bin/ directory
+        run: |
+          if [ -e bin ]; then
+            echo "ERROR: top-level bin/ exists — the claude.ai plugin store rejects plugins that ship one. Ship executables in binaries/ and declare entry points via hooks instead." >&2
+            exit 1
+          fi
+          for name in clover-hook-darwin-arm64 clover-hook-darwin-amd64 clover-hook-linux-amd64 clover-hook-linux-arm64; do
+            if [ ! -f "binaries/$name" ]; then
+              echo "ERROR: binaries/$name is missing — the hook payload is incomplete" >&2
+              exit 1
+            fi
+          done
+          echo "OK: hook payload ships in binaries/, no top-level bin/"
+
       - name: Check scripts are executable
         run: |
           for f in scripts/*.sh; do
