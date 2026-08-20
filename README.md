@@ -11,13 +11,31 @@ implementation begins.
 
 Both hooks are plain Python (`hooks/clover_hook.py`, standard library only) and
 run on the `python3` already on your machine. Nothing is compiled, downloaded,
-or installed. **Requires Python 3.9+.**
+or installed — see [Prerequisites](#prerequisites).
 
 Every hook fails open, and does so *silently*: if Clover can't reach the
 server, isn't configured, or hits an error, it exits without a decision and the
 tool call follows whatever permission flow you already configured. Clover only
 ever emits one decision — a deny, with the missing security requirements as its
 reason. It never approves a tool call on your behalf.
+
+## Prerequisites
+
+**Python 3.9 or newer**, available as `python3` on your `PATH`. The hooks are
+plain Python source and run on your machine's own interpreter — there is
+nothing to compile and no packages to install. Check with:
+
+```bash
+python3 --version
+```
+
+macOS and most Linux distributions ship a suitable `python3` already. If yours
+has no CA certificates configured (a python.org build whose *Install
+Certificates* step was never run), point Clover at a bundle:
+
+```bash
+export SSL_CERT_FILE=/etc/ssl/cert.pem
+```
 
 ## Install
 
