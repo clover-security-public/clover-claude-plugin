@@ -25,17 +25,70 @@ jobs:
           jq empty hooks/hooks.json
           echo "Valid"
 
-      - name: Check scripts are executable
+      # The hooks run under whatever python3 the developer's machine ships.
+      # 3.9 is the floor (macOS system python), so compile against it.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      - name: Compile hooks
+        run: python -m compileall -q hooks/clover_hook.py
+
+      # The one safe non-blocking outcome for a PreToolUse hook is exit 0 with
+      # an empty stdout. An explicit "allow" would skip the user's permission
+      # prompt, so no path may ever print one.
+      - name: Hooks fail open silently, and never grant permission
         run: |
-          for f in scripts/*.sh; do
-            if [ ! -x "$f" ]; then
-              echo "ERROR: $f is not executable"
+          for CASE in \
+            'review-plan|{"session_id":"ci","tool_input":{"plan":"# ci"}}' \
+            'review-plan|{"session_id":"ci","tool_input":{"plan":""}}' \
+            'should-review-plan|{"session_id":"ci","tool_input":{"file_path":"main.tf","content":"x"}}' \
+            'should-review-plan|{"session_id":"ci","tool_input":{"file_path":"p.md","content":"# p"}}' \
+            'review-plan|not json' ; do
+            CMD=${CASE%%|*}; PAYLOAD=${CASE#*|}
+            OUT=$(printf '%s' "$PAYLOAD" | python hooks/clover_hook.py "$CMD")
+            if [ -n "$OUT" ]; then
+              echo "ERROR: $CMD emitted a decision when it should stay silent: $OUT"
               exit 1
             fi
-            echo "OK: $f"
+            echo "OK: $CMD ($PAYLOAD)"
           done
+          if grep -q '"permissionDecision": "allow"' hooks/clover_hook.py; then
+            echo "ERROR: the hook can emit an allow decision"
+            exit 1
+          fi
 
-      - name: Shellcheck
+  # Runs the hook for real against the Clover backend: a plan must come back
+  # denied with requirements, and a non-plan write must stay silent. This is the
+  # only check that exercises auth, the response envelope, the polling loop and
+  # the TLS trust store against the live service rather than a local stub.
+  #
+  # Needs CLOVER_SERVER_URL, CLOVER_AUTH_URL, CLOVER_CLIENT_ID and
+  # CLOVER_CLIENT_SECRET as repository secrets. Fork PRs never receive secrets,
+  # so the job reports a warning and skips rather than failing on something the
+  # contributor cannot fix.
+  live:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      - name: Review a plan through the live backend
+        env:
+          CAS_CLOVER_PLUGIN_SERVER_URL: ${{ secrets.CLOVER_SERVER_URL }}
+          CAS_CLOVER_PLUGIN_AUTH_URL: ${{ secrets.CLOVER_AUTH_URL }}
+          CAS_CLOVER_PLUGIN_CLIENT_ID: ${{ secrets.CLOVER_CLIENT_ID }}
+          CAS_CLOVER_PLUGIN_CLIENT_SECRET: ${{ secrets.CLOVER_CLIENT_SECRET }}
+          CLAUDE_PLUGIN_ROOT: ${{ github.workspace }}
         run: |
-          sudo apt-get install -y shellcheck > /dev/null 2>&1
-          shellcheck scripts/*.sh || true
+          if [ -z "$CAS_CLOVER_PLUGIN_CLIENT_ID" ] || [ -z "$CAS_CLOVER_PLUGIN_CLIENT_SECRET" ]; then
+            echo "::warning::Clover credentials are not available to this run, so the live backend was NOT exercised. Set the CLOVER_* repository secrets to enable it."
+            exit 0
+          fi
+
+          export CLAUDE_PLUGIN_DATA="$RUNNER_TEMP/clover-data"
+          mkdir -p "$CLAUDE_PLUGIN_DATA"
+          python .github/scripts/live_check.py

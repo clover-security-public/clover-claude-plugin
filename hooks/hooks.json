@@ -5,7 +5,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/setup.sh"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/clover_hook.py\" session-start",
+            "timeout": 15
           }
         ]
       }
@@ -16,7 +17,17 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/run-hook.sh review-plan",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/clover_hook.py\" review-plan",
+            "timeout": 300
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/clover_hook.py\" should-review-plan",
             "timeout": 300
           }
         ]

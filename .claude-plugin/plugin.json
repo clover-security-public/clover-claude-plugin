@@ -1,6 +1,6 @@
 {
   "name": "clover",
-  "version": "0.1.79",
+  "version": "0.1.80",
   "description": "Protect your coding agent experience — Clover silently threat-models every plan, surfaces missing security requirements, and folds them in before code is written.",
   "author": {
     "name": "Clover Security"
@@ -29,6 +29,12 @@
       "description": "API client secret",
       "type": "string",
       "sensitive": true
+    },
+    "user_email": {
+      "title": "Your Email (optional)",
+      "description": "Only needed if Claude Code has no account profile (e.g. API-key auth); otherwise Clover uses your Claude account or git identity",
+      "type": "string",
+      "sensitive": false
     }
   }
 }
