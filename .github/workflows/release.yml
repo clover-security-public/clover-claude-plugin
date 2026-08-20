@@ -9,10 +9,9 @@ on:
     # (.claude-plugin/**) no longer produce a new version. dist/ and the
     # root clover-hook binary are gitignored, so they never reach a push.
     paths:
-      - 'bin/**'        # clover-hook binaries (the release assets)
-      - 'hooks/**'      # hooks.json
+      - 'hooks/**'      # hooks.json + the Python hook
       - 'skills/**'     # bundled skills
-      - 'scripts/**'    # setup.sh / run-hook.sh / build-org-zip.sh
+      - 'scripts/**'    # build-org-zip.sh
   # Manual escape hatch: force a release even when nothing above changed.
   workflow_dispatch:
 
@@ -40,8 +39,6 @@ jobs:
       #      plugin's own plugin.json when this repo holds it locally)
       #   3. tag + cut a GitHub release for the resolved version
       #
-      # Only plugins that actually ship the clover-hook binaries get those
-      # assets attached; others release without binaries.
       - name: Bump, tag and release each plugin
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -105,25 +102,8 @@ jobs:
               continue
             fi
 
-            # Attach the hook binaries only for the plugin that ships them.
-            ASSETS=()
-            if [ "$NAME" = "clover" ]; then
-              for b in clover-hook-darwin-arm64 clover-hook-darwin-amd64 \
-                       clover-hook-linux-amd64 clover-hook-linux-arm64; do
-                if [ ! -f "bin/$b" ]; then
-                  echo "ERROR: bin/$b is missing — push binaries from the source repo before releasing" >&2
-                  exit 1
-                fi
-                ASSETS+=("bin/$b")
-              done
-            fi
-
+            # The plugin is pure source now — no release assets to attach.
             git tag "$TAG"
             git push origin "$TAG"
-
-            if [ "${#ASSETS[@]}" -gt 0 ]; then
-              gh release create "$TAG" --title "$TAG" --generate-notes "${ASSETS[@]}"
-            else
-              gh release create "$TAG" --title "$TAG" --generate-notes
-            fi
+            gh release create "$TAG" --title "$TAG" --generate-notes
           done
