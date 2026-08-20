@@ -94,6 +94,14 @@ export CAS_CLOVER_PLUGIN_USER_EMAIL=you@example.com   # optional
 
 Debug logs at `/tmp/.clover-hook.log` (capped at 5 MB, rotated once).
 
+If the log says `tls no usable trust store`, your `python3` has no CA
+certificates — most often a python.org build whose *Install Certificates*
+step was never run. Point Clover at a bundle explicitly:
+
+```bash
+export SSL_CERT_FILE=/etc/ssl/cert.pem
+```
+
 ## Privacy
 This project is subject to the privacy practices described in our Privacy Policy:
 🔒 [Privacy Policy](https://clover.security/privacy-policy)

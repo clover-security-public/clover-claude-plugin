@@ -206,16 +206,72 @@ def developer_email(cwd):
 # HTTP
 # --------------------------------------------------------------------------
 
+# Trust stores to try when the interpreter's own default is empty, in order.
+CA_BUNDLES = (
+    "/etc/ssl/cert.pem",                        # macOS
+    "/etc/ssl/certs/ca-certificates.crt",       # Debian, Ubuntu, Alpine
+    "/etc/pki/tls/certs/ca-bundle.crt",         # RHEL, Fedora
+    "/etc/ssl/ca-bundle.pem",                   # SUSE
+)
+
+_verifying_context = None
+
+
+def _verified_context():
+    """An SSL context with a populated trust store.
+
+    A python.org framework build whose "Install Certificates.command" was never
+    run has an *empty* default store — its OpenSSL looks for a cert.pem inside
+    the framework that does not exist — so every HTTPS call fails certificate
+    verification. The Go binary this replaced used the platform store and never
+    hit that. So: use the default store when it actually holds CAs, otherwise
+    fall back to certifi and then to the platform bundles.
+
+    Returns None when no trust store can be found, which fails the request —
+    and therefore the hook, silently. An unverified connection is never a
+    fallback."""
+    global _verifying_context
+    if _verifying_context is not None:
+        return _verifying_context or None
+
+    context = ssl.create_default_context()
+    if context.cert_store_stats().get("x509_ca"):
+        _verifying_context = context
+        return context
+
+    try:
+        import certifi
+        candidates = (certifi.where(),) + CA_BUNDLES
+    except ImportError:
+        candidates = CA_BUNDLES
+
+    for bundle in candidates:
+        if not os.path.isfile(bundle):
+            continue
+        try:
+            context = ssl.create_default_context(cafile=bundle)
+        except (ssl.SSLError, OSError):
+            continue
+        if context.cert_store_stats().get("x509_ca"):
+            logf("DEBUG", "tls trust store loaded from %s" % bundle)
+            _verifying_context = context
+            return context
+
+    logf("ERROR", "tls no usable trust store; set SSL_CERT_FILE to a CA bundle")
+    _verifying_context = False
+    return None
+
+
 def _ssl_context(url):
     """Verification is always on, except for an opted-in local dev server."""
     try:
         host = urllib.parse.urlparse(url).hostname
     except ValueError:
-        return None
+        host = None
     if host in ("localhost", "127.0.0.1", "::1") and \
             os.environ.get("CLOVER_INSECURE_SKIP_TLS_VERIFY") == "1":
         return ssl._create_unverified_context()
-    return None
+    return _verified_context()
 
 
 def post_json(endpoint, token, payload, timeout=REQUEST_TIMEOUT_SECONDS):
