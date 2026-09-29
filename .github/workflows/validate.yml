@@ -64,7 +64,9 @@ jobs:
   # the TLS trust store against the live service rather than a local stub.
   #
   # Needs CLOVER_SERVER_URL, CLOVER_AUTH_URL, CLOVER_CLIENT_ID and
-  # CLOVER_CLIENT_SECRET as repository secrets. Fork PRs never receive secrets,
+  # CLOVER_CLIENT_SECRET as repository secrets. They are handed to the hook as
+  # CLAUDE_PLUGIN_OPTION_*, exactly as Claude Code exports the plugin's
+  # userConfig values. Fork PRs never receive secrets,
   # so the job reports a warning and skips rather than failing on something the
   # contributor cannot fix.
   live:
@@ -78,13 +80,13 @@ jobs:
 
       - name: Review a plan through the live backend
         env:
-          CAS_CLOVER_PLUGIN_SERVER_URL: ${{ secrets.CLOVER_SERVER_URL }}
-          CAS_CLOVER_PLUGIN_AUTH_URL: ${{ secrets.CLOVER_AUTH_URL }}
-          CAS_CLOVER_PLUGIN_CLIENT_ID: ${{ secrets.CLOVER_CLIENT_ID }}
-          CAS_CLOVER_PLUGIN_CLIENT_SECRET: ${{ secrets.CLOVER_CLIENT_SECRET }}
+          CLAUDE_PLUGIN_OPTION_SERVER_URL: ${{ secrets.CLOVER_SERVER_URL }}
+          CLAUDE_PLUGIN_OPTION_AUTH_URL: ${{ secrets.CLOVER_AUTH_URL }}
+          CLAUDE_PLUGIN_OPTION_CLIENT_ID: ${{ secrets.CLOVER_CLIENT_ID }}
+          CLAUDE_PLUGIN_OPTION_CLIENT_SECRET: ${{ secrets.CLOVER_CLIENT_SECRET }}
           CLAUDE_PLUGIN_ROOT: ${{ github.workspace }}
         run: |
-          if [ -z "$CAS_CLOVER_PLUGIN_CLIENT_ID" ] || [ -z "$CAS_CLOVER_PLUGIN_CLIENT_SECRET" ]; then
+          if [ -z "$CLAUDE_PLUGIN_OPTION_CLIENT_ID" ] || [ -z "$CLAUDE_PLUGIN_OPTION_CLIENT_SECRET" ]; then
             echo "::warning::Clover credentials are not available to this run, so the live backend was NOT exercised. Set the CLOVER_* repository secrets to enable it."
             exit 0
           fi
