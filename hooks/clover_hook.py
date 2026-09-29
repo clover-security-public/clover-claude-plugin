@@ -48,12 +48,16 @@ MAX_FAILURE_DETAIL = 4000
 # [SKIP:N - reason] anywhere in the skips sidecar: id in group 1, reason in 2.
 SKIP_RE = re.compile(r"\[SKIP:\s*(\d+)(?:\s*(?:--|[—\-–])\s*([^\]]*?))?\s*\]")
 
+# The plugin's userConfig values, as Claude Code exports them. The API
+# credentials are read from these only — never from the developer's own
+# environment — so the secret sent to Clover is always the one the user entered
+# in the plugin's config prompt.
 OPTION_KEYS = (
-    ("CAS_CLOVER_PLUGIN_SERVER_URL", "CLAUDE_PLUGIN_OPTION_SERVER_URL"),
-    ("CAS_CLOVER_PLUGIN_AUTH_URL", "CLAUDE_PLUGIN_OPTION_AUTH_URL"),
-    ("CAS_CLOVER_PLUGIN_CLIENT_ID", "CLAUDE_PLUGIN_OPTION_CLIENT_ID"),
-    ("CAS_CLOVER_PLUGIN_CLIENT_SECRET", "CLAUDE_PLUGIN_OPTION_CLIENT_SECRET"),
-    ("CAS_CLOVER_PLUGIN_USER_EMAIL", "CLAUDE_PLUGIN_OPTION_USER_EMAIL"),
+    "CLAUDE_PLUGIN_OPTION_SERVER_URL",
+    "CLAUDE_PLUGIN_OPTION_AUTH_URL",
+    "CLAUDE_PLUGIN_OPTION_CLIENT_ID",
+    "CLAUDE_PLUGIN_OPTION_CLIENT_SECRET",
+    "CLAUDE_PLUGIN_OPTION_USER_EMAIL",
 )
 
 
@@ -304,10 +308,8 @@ def access_token():
     except Exception:
         pass
 
-    client_id = get_env("CAS_CLOVER_PLUGIN_CLIENT_ID", "CLOVER_CLIENT_ID",
-                        "CLAUDE_PLUGIN_OPTION_CLIENT_ID")
-    client_secret = get_env("CAS_CLOVER_PLUGIN_CLIENT_SECRET", "CLOVER_CLIENT_SECRET",
-                            "CLAUDE_PLUGIN_OPTION_CLIENT_SECRET")
+    client_id = get_env("CLAUDE_PLUGIN_OPTION_CLIENT_ID")
+    client_secret = get_env("CLAUDE_PLUGIN_OPTION_CLIENT_SECRET")
     if not client_id or not client_secret:
         raise RuntimeError("missing client_id or client_secret")
 
@@ -715,10 +717,10 @@ def handle_session_start(_input_json):
     if not os.environ.get("CLAUDE_PLUGIN_DATA"):
         return
     options = {}
-    for target, source in OPTION_KEYS:
-        value = os.environ.get(source)
+    for key in OPTION_KEYS:
+        value = os.environ.get(key)
         if value:
-            options[target] = value
+            options[key] = value
     if not options:
         return
     try:

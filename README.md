@@ -99,12 +99,15 @@ other gate never re-reviews the same content.
 
 ## Configuration
 
-Override via environment variables:
+The **client_id** and **client_secret** are read only from the plugin settings
+you're prompted for at install (the secret is stored as a sensitive value) —
+never from your shell environment. Change them via `/plugin` → *clover* →
+**Configure**.
+
+The non-secret settings can also be overridden via environment variables:
 ```bash
 export CAS_CLOVER_PLUGIN_SERVER_URL=https://app.cloversec.io
 export CAS_CLOVER_PLUGIN_AUTH_URL=https://clover.frontegg.com
-export CAS_CLOVER_PLUGIN_CLIENT_ID=your-client-id
-export CAS_CLOVER_PLUGIN_CLIENT_SECRET=your-client-secret
 export CAS_CLOVER_PLUGIN_USER_EMAIL=you@example.com   # optional
 ```
 
@@ -119,6 +122,23 @@ step was never run. Point Clover at a bundle explicitly:
 ```bash
 export SSL_CERT_FILE=/etc/ssl/cert.pem
 ```
+
+## What Clover sends, and where
+
+The hooks talk to two hosts only — the ones you configured:
+
+- **auth_url** (default `https://clover.frontegg.com`, Clover's identity
+  provider): your configured client_id and client_secret, exchanged once for a
+  short-lived access token that is cached in the plugin's data directory.
+- **server_url** (default `https://app.cloversec.io`, the Clover API), with
+  that access token:
+  - the plan text when a plan is reviewed, and the content of a `.md` file
+    being written so the server can tell whether it is a plan;
+  - context for the review: session ID, git branch, repository name and remote
+    URL, your email (see *user_email* above), and the plugin's name and version;
+  - on a fail-open error, a short failure reason for Clover's diagnostics.
+
+Nothing else on your machine is read and sent; no other host is contacted.
 
 ## Privacy
 This project is subject to the privacy practices described in our Privacy Policy:
